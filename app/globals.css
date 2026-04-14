@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================
+   KELLER — Global Styles
+   Brutalist, lab-tech dark theme
+   ============================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Custom scrollbar — thin, dark, unobtrusive */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0d1117;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}
+
+/* Selection color */
+::selection {
+  background: rgba(88, 166, 255, 0.25);
+  color: #c9d1d9;
+}
+
+/* Focus ring utility */
+.focus-ring:focus-visible {
+  outline: 1px solid #58a6ff;
+  outline-offset: -1px;
+}
+
+/* Monospace code blocks */
+code, pre, .font-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+}
+
+/* Subtle grid background for brutalist aesthetic */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(48, 54, 61, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(48, 54, 61, 0.3) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Button base */
+.btn-primary {
+  @apply px-4 py-1.5 rounded text-sm font-medium transition-all duration-150
+         bg-keller-accent/15 text-keller-accent border border-keller-accent/30
+         hover:bg-keller-accent/25 hover:border-keller-accent/50
+         active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed
+         disabled:active:scale-100;
+}
+
+.btn-success {
+  @apply px-4 py-1.5 rounded text-sm font-medium transition-all duration-150
+         bg-keller-success/15 text-keller-success border border-keller-success/30
+         hover:bg-keller-success/25 hover:border-keller-success/50
+         active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed
+         disabled:active:scale-100;
+}
+
+/* Pane borders — the brutalist divider */
+.pane-border-right {
+  border-right: 1px solid #30363d;
+}
+
+.pane-border-bottom {
+  border-bottom: 1px solid #30363d;
+}
