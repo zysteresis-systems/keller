@@ -2,6 +2,30 @@ import { X, History, ExternalLink } from 'lucide-react';
 
 const RELEASES = [
   {
+    version: 'v0.3.2',
+    date: 'April 15, 2026',
+    title: 'AI Insights Bug Fix & Enhanced Error Handling',
+    changes: [
+      'Fixed "bad groq request" error in AI insights feature',
+      'Added robust DeepSeek API integration with Groq fallback',
+      'Implemented intelligent mock responses for development/testing',
+      'Enhanced error handling with graceful degradation',
+      'Added smart log analysis with metric extraction (wires, cells, problems)',
+      'Improved user experience with contextual error messages'
+    ]
+  },
+  {
+    version: 'v0.3.1',
+    date: 'April 15, 2026',
+    title: 'Enhanced AI Insights & DeepSeek Integration',
+    changes: [
+      'Enhanced AI log analysis with DeepSeek API integration for better explanations',
+      'Improved error interpretation for synthesis and simulation failures',
+      'Added detailed metric extraction (power, timing, area estimates)',
+      'Optimized prompt engineering for beginner-friendly explanations'
+    ]
+  },
+  {
     version: 'v0.3',
     date: 'April 2026',
     title: 'AI Insights & Custom ABC Sequences',
