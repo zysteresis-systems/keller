@@ -13,6 +13,7 @@ import { useState, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Toolbar from '@/components/Toolbar';
 import Console from '@/components/Console';
+import ChangelogModal from '@/components/ChangelogModal';
 import { DEFAULT_DESIGN, DEFAULT_TESTBENCH } from '@/lib/defaults';
 import { parseVCD } from '@/lib/vcdParser';
 
@@ -52,9 +53,11 @@ export default function KellerApp() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [lastElapsed, setLastElapsed] = useState(null);
   const [recipe, setRecipe] = useState('standard');
+  const [customSequence, setCustomSequence] = useState('5, 3, 0, 2, 2, 6, 0, 4, 3, 0, 6, 4, 3, 4, 2, 0, 4, 4, 3, 5');
   const [flatten, setFlatten] = useState(false);
   const [pdk, setPdk] = useState('generic');
   const [bottomTab, setBottomTab] = useState('waveform'); // 'waveform' | 'schematic'
+  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const codeRef = useRef({ design: DEFAULT_DESIGN, testbench: DEFAULT_TESTBENCH });
   const editorRef = useRef(null);
 
@@ -103,6 +106,7 @@ export default function KellerApp() {
           design: codeRef.current.design,
           mode: 'synthesis',
           recipe,
+          customSequence: recipe === 'custom' ? customSequence : null,
           flatten,
           pdk,
         }),
@@ -159,7 +163,7 @@ export default function KellerApp() {
     } finally {
       setIsSynthesizing(false);
     }
-  }, [addLog, clearLogs, recipe, flatten, pdk]);
+  }, [addLog, clearLogs, recipe, customSequence, flatten, pdk]);
 
   // ── Run Simulation ──
   const handleSimulate = useCallback(async () => {
@@ -241,6 +245,8 @@ export default function KellerApp() {
         onReset={handleReset}
         recipe={recipe}
         onRecipeChange={setRecipe}
+        customSequence={customSequence}
+        onCustomSequenceChange={setCustomSequence}
         pdk={pdk}
         onPdkChange={setPdk}
         flatten={flatten}
@@ -319,13 +325,21 @@ export default function KellerApp() {
 
       {/* Footer */}
       <footer className="flex items-center justify-between px-4 py-1 bg-keller-surface border-t border-keller-border">
+        <div className="flex items-center gap-3 text-2xs text-keller-dim font-sans" style={{ fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif' }}>
+          <span>Keller v0.3 — Browser-Native RTL Compiler</span>
+          <button 
+            onClick={() => setIsChangelogOpen(true)}
+            className="hover:text-keller-accent underline decoration-keller-accent/30 underline-offset-2 transition-colors"
+          >
+            Changelog
+          </button>
+        </div>
         <span className="text-2xs text-keller-dim font-sans" style={{ fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif' }}>
-          Keller v0.2 — Browser-Native RTL Compiler
-        </span>
-        <span className="text-2xs text-keller-dim font-sans" style={{ fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif' }}>
-          Built by <span className="text-keller-muted">Yashvardhan Singh</span>
+          Built by <a href="https://www.linkedin.com/in/yvs373/" target="_blank" rel="noopener noreferrer" className="text-keller-muted hover:text-keller-accent transition-colors">Yashvardhan Singh</a>
         </span>
       </footer>
+
+      <ChangelogModal isOpen={isChangelogOpen} onClose={() => setIsChangelogOpen(false)} />
     </div>
   );
 }

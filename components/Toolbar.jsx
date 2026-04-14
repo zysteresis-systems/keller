@@ -31,6 +31,8 @@ export default function Toolbar({
   onReset,
   recipe,
   onRecipeChange,
+  customSequence,
+  onCustomSequenceChange,
   pdk,
   onPdkChange,
   flatten,
@@ -80,7 +82,7 @@ export default function Toolbar({
             className="text-2xs text-keller-dim leading-none mt-0.5"
             style={{ fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif' }}
           >
-            by Yashvardhan Singh
+            by <a href="https://www.linkedin.com/in/yvs373/" target="_blank" rel="noopener noreferrer" className="hover:text-keller-accent transition-colors">Yashvardhan Singh</a>
           </p>
         </div>
       </div>
@@ -88,38 +90,63 @@ export default function Toolbar({
       {/* Center: Recipe selector + flatten + status */}
       <div className="hidden sm:flex items-center gap-3">
         {/* Recipe dropdown */}
-        <div ref={dropdownRef} className="relative">
-          <button
-            onClick={() => setShowRecipeDropdown(!showRecipeDropdown)}
-            disabled={isLoading}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs
-                       text-keller-muted border border-keller-border
-                       hover:text-keller-text hover:border-keller-dim
-                       transition-colors disabled:opacity-40"
-          >
-            <span className="text-keller-dim">Recipe:</span>
-            <span className="font-medium">{currentRecipe.label}</span>
-            <ChevronDown className="w-3 h-3" />
-          </button>
+        <div className="flex items-center gap-2">
+          <div ref={dropdownRef} className="relative">
+            <button
+              onClick={() => setShowRecipeDropdown(!showRecipeDropdown)}
+              disabled={isLoading}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs
+                         text-keller-muted border border-keller-border
+                         hover:text-keller-text hover:border-keller-dim
+                         transition-colors disabled:opacity-40"
+            >
+              <span className="text-keller-dim">Recipe:</span>
+              <span className="font-medium">{currentRecipe?.label || 'Custom'}</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
 
-          {showRecipeDropdown && (
-            <div className="absolute top-full mt-1 left-0 z-50 w-56 py-1
-                            bg-keller-surface border border-keller-border rounded-md shadow-xl">
-              {RECIPE_OPTIONS.map(opt => (
+            {showRecipeDropdown && (
+              <div className="absolute top-full mt-1 left-0 z-50 w-56 py-1
+                              bg-keller-surface border border-keller-border rounded-md shadow-xl">
+                {RECIPE_OPTIONS.map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => { onRecipeChange(opt.id); setShowRecipeDropdown(false); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs transition-colors
+                      ${opt.id === recipe
+                        ? 'text-keller-accent bg-keller-accent/10'
+                        : 'text-keller-muted hover:text-keller-text hover:bg-keller-hover'
+                      }`}
+                  >
+                    <div className="font-medium">{opt.label}</div>
+                    <div className="text-2xs text-keller-dim mt-0.5">{opt.desc}</div>
+                  </button>
+                ))}
                 <button
-                  key={opt.id}
-                  onClick={() => { onRecipeChange(opt.id); setShowRecipeDropdown(false); }}
-                  className={`w-full text-left px-3 py-1.5 text-xs transition-colors
-                    ${opt.id === recipe
+                  onClick={() => { onRecipeChange('custom'); setShowRecipeDropdown(false); }}
+                  className={`w-full text-left px-3 py-1.5 text-xs transition-colors border-t border-keller-border
+                    ${recipe === 'custom'
                       ? 'text-keller-accent bg-keller-accent/10'
                       : 'text-keller-muted hover:text-keller-text hover:bg-keller-hover'
                     }`}
                 >
-                  <div className="font-medium">{opt.label}</div>
-                  <div className="text-2xs text-keller-dim mt-0.5">{opt.desc}</div>
+                  <div className="font-medium">Custom (OpenABC-D)</div>
+                  <div className="text-2xs text-keller-dim mt-0.5">Use a 20-number sequence</div>
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
+          </div>
+
+          {/* Custom Sequence Input */}
+          {recipe === 'custom' && (
+            <input
+              type="text"
+              value={customSequence}
+              onChange={(e) => onCustomSequenceChange(e.target.value)}
+              placeholder="e.g. 5, 3, 0, ..."
+              disabled={isLoading}
+              className="px-2 py-1 bg-keller-bg border border-keller-border rounded text-xs text-keller-text w-32 focus:outline-none focus:border-keller-accent transition-colors"
+            />
           )}
         </div>
 

@@ -15,6 +15,17 @@
 import { NextResponse } from 'next/server';
 import { RECIPES } from '@/lib/synthesisRecipes';
 
+// ABC command mapping for OpenABC-D style recipes
+const ABC_CMD_MAP = {
+  0: 'balance',
+  1: 'rewrite',
+  2: 'refactor',
+  3: 'resub',
+  4: 'rewrite -z',
+  5: 'refactor -z',
+  6: 'resub -z',
+};
+
 // ── Synthesis via @yowasp/yosys (WASM) ──
 async function runSynthesis(designCode, options = {}) {
   const startTime = Date.now();
@@ -45,7 +56,23 @@ async function runSynthesis(designCode, options = {}) {
     }
 
     // Build Yosys script based on recipe and options
-    const recipeConfig = RECIPES[recipe] || RECIPES.standard;
+    let recipeConfig;
+    let customAbcScript = null;
+
+    if (recipe === 'custom' && options.customSequence) {
+      // Parse the 20-number OpenABC-D sequence into an ABC script
+      const nums = options.customSequence
+        .split(/[,\s]+/)
+        .map(Number)
+        .filter(n => !isNaN(n) && n >= 0 && n <= 6);
+      if (nums.length > 0) {
+        const abcCmds = nums.map(n => ABC_CMD_MAP[n] || 'balance');
+        customAbcScript = '+strash;' + abcCmds.join(';');
+      }
+      recipeConfig = RECIPES.quick; // Use Quick as the base for custom
+    } else {
+      recipeConfig = RECIPES[recipe] || RECIPES.standard;
+    }
     let commands = [...recipeConfig.commands];
 
     // CRITICAL: If a PDK is selected, we must expand the `synth` macro
@@ -107,6 +134,23 @@ async function runSynthesis(designCode, options = {}) {
       commands = commands.map(c =>
         c === 'stat' ? `stat -liberty ${pdkLibPath}` : c
       );
+    }
+
+    // If custom ABC sequence is specified (and no PDK overriding abc)
+    if (customAbcScript && !pdkLibPath) {
+      commands = commands.map(c => {
+        if (c === 'abc') return `abc -script "${customAbcScript}"`;
+        if (c.startsWith('abc -script')) return `abc -script "${customAbcScript}"`;
+        return c;
+      });
+    } else if (customAbcScript && pdkLibPath) {
+      // With PDK + custom sequence: use abc -liberty with custom script
+      commands = commands.map(c => {
+        if (c === `abc -liberty ${pdkLibPath}`) {
+          return `abc -liberty ${pdkLibPath} -script "${customAbcScript}"`;
+        }
+        return c;
+      });
     }
 
     // Always add write_json for schematic generation (before stat)
@@ -197,11 +241,61 @@ async function runSynthesis(designCode, options = {}) {
   }
 }
 
+// ── Normalize netlist JSON for SVG rendering ──
+// Maps PDK-specific cell names to generic types that netlistsvg can render.
+function normalizeNetlistForSvg(netlistJson) {
+  const CELL_MAP = {
+    'inv': '$_NOT_', 'buf': '$_BUF_',
+    'nand2': '$_NAND_', 'nand3': '$_NAND_', 'nand4': '$_NAND_',
+    'nor2': '$_NOR_', 'nor3': '$_NOR_', 'nor4': '$_NOR_',
+    'and2': '$_AND_', 'and3': '$_AND_', 'and4': '$_AND_',
+    'or2': '$_OR_', 'or3': '$_OR_', 'or4': '$_OR_',
+    'xor2': '$_XOR_', 'xnor2': '$_XNOR_',
+    'mux2': '$_MUX_',
+    'dfxtp': '$_DFF_P_', 'dfrtp': '$_DFFSR_PPP_',
+    'a21oi': '$_AOI3_', 'o21ai': '$_OAI3_',
+    'a211oi': '$_AOI4_', 'o211ai': '$_OAI4_'
+  };
+
+  try {
+    const copy = JSON.parse(JSON.stringify(netlistJson));
+    for (const modName of Object.keys(copy.modules || {})) {
+      const mod = copy.modules[modName];
+      const newCells = {};
+      for (const [cellName, cellData] of Object.entries(mod.cells || {})) {
+        let cellType = cellData.type || '';
+        // Try to match sky130/PDK cell name patterns
+        let matched = false;
+        for (const [pattern, generic] of Object.entries(CELL_MAP)) {
+          if (cellType.includes(`__${pattern}_`) || cellType.endsWith(`__${pattern}`)) {
+            cellData.type = generic;
+            matched = true;
+            break;
+          }
+        }
+        // Add original type as an attribute for tooltip
+        if (matched) {
+          cellData.attributes = cellData.attributes || {};
+          cellData.attributes['original_type'] = cellType;
+        }
+        newCells[cellName] = cellData;
+      }
+      mod.cells = newCells;
+    }
+    return copy;
+  } catch {
+    return netlistJson; // Return original on any error
+  }
+}
+
 // ── Render schematic SVG from Yosys JSON ──
 async function renderSchematic(netlistJson) {
   const netlistsvg = require('netlistsvg');
   const fs = require('fs');
   const path = require('path');
+
+  // Normalize PDK cell names to generic types for rendering
+  const normalizedNetlist = normalizeNetlistForSvg(netlistJson);
 
   // Load the digital skin file — try multiple resolution strategies
   let skinPath;
@@ -222,7 +316,7 @@ async function renderSchematic(netlistJson) {
   }
 
   const skin = fs.readFileSync(skinPath, 'utf-8');
-  const svg = await netlistsvg.render(skin, netlistJson);
+  const svg = await netlistsvg.render(skin, normalizedNetlist);
   return svg;
 }
 
