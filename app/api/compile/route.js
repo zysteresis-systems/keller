@@ -48,33 +48,62 @@ async function runSynthesis(designCode, options = {}) {
     const recipeConfig = RECIPES[recipe] || RECIPES.standard;
     let commands = [...recipeConfig.commands];
 
+    // CRITICAL: If a PDK is selected, we must expand the `synth` macro
+    // into its discrete steps. The `synth` macro contains an implicit `abc`
+    // step that ignores our liberty file. By expanding it, we gain full control.
+    if (pdkLibPath) {
+      const hasSynthMacro = commands.some(c => c === 'synth' || c.startsWith('synth '));
+      if (hasSynthMacro) {
+        // Replace 'synth' with equivalent discrete Yosys passes
+        commands = commands.flatMap(c => {
+          if (c === 'synth' || c.startsWith('synth ')) {
+            return [
+              'hierarchy -auto-top',
+              'proc',
+              'opt',
+              'memory',
+              'opt',
+              'techmap',
+              'opt',
+            ];
+          }
+          return [c];
+        });
+      }
+    }
+
     // If flatten requested and not already in recipe
     if (flatten && !commands.includes('flatten')) {
-      const synthIdx = commands.findIndex(c => c.startsWith('synth'));
-      if (synthIdx >= 0) {
-        commands.splice(synthIdx + 1, 0, 'flatten');
+      // Insert after hierarchy or synth-expansion
+      const hierIdx = commands.findIndex(c => c.startsWith('hierarchy') || c.startsWith('synth'));
+      if (hierIdx >= 0) {
+        commands.splice(hierIdx + 1, 0, 'flatten');
       }
     }
 
     // If PDK selected, replace generic abc with liberty-mapped flow
     if (pdkLibPath) {
-      // Remove any existing abc commands
+      // Remove any existing generic abc commands
       commands = commands.filter(c => !c.startsWith('abc'));
 
-      // Find where to insert PDK mapping (after techmap or synth)
-      const insertIdx = commands.findIndex(c =>
-        c.startsWith('techmap') || c.startsWith('opt_clean') || c.startsWith('stat')
-      );
-      const idx = insertIdx >= 0 ? insertIdx : commands.length;
+      // Find insertion point: after the last techmap or opt
+      let insertIdx = -1;
+      for (let i = commands.length - 1; i >= 0; i--) {
+        if (commands[i].startsWith('techmap') || commands[i].startsWith('opt')) {
+          insertIdx = i + 1;
+          break;
+        }
+      }
+      if (insertIdx < 0) insertIdx = commands.length;
 
-      // Insert dfflibmap + abc -liberty
-      commands.splice(idx, 0,
+      // Insert dfflibmap + abc -liberty for proper technology mapping
+      commands.splice(insertIdx, 0,
         `dfflibmap -liberty ${pdkLibPath}`,
         `abc -liberty ${pdkLibPath}`,
         'opt_clean'
       );
 
-      // Replace stat with stat -liberty
+      // Replace generic stat with stat -liberty for real area/cell reports
       commands = commands.map(c =>
         c === 'stat' ? `stat -liberty ${pdkLibPath}` : c
       );
@@ -94,6 +123,7 @@ async function runSynthesis(designCode, options = {}) {
     }
 
     const yosysScript = commands.join('; ');
+    console.log('[KELLER] Yosys script:', yosysScript);
 
     // CRITICAL: @yowasp/yosys writes directly to process.stdout/stderr,
     // ignoring the print/printErr callbacks. We must monkey-patch to capture.
@@ -247,14 +277,21 @@ async function runSimulation(designCode, testbenchCode) {
       if (simError.stdout) log += simError.stdout;
     }
 
-    // Step 3: Read VCD file if it was generated
+    // Step 3: Read VCD file — scan for ANY .vcd file (not just waveform.vcd)
+    // This handles testbenches using $dumpfile("dump.vcd"), $dumpfile("tb.vcd"), etc.
     let vcd = null;
-    const vcdPath = path.join(tmpDir, 'waveform.vcd');
-    if (fs.existsSync(vcdPath)) {
-      vcd = fs.readFileSync(vcdPath, 'utf-8');
-      log += `[VCD] Waveform data captured (${vcd.length} bytes)\n`;
-    } else {
-      log += '[VCD] No waveform.vcd generated. Ensure $dumpfile("waveform.vcd") is in your testbench.\n';
+    try {
+      const allFiles = fs.readdirSync(tmpDir);
+      const vcdFile = allFiles.find(f => f.endsWith('.vcd'));
+      if (vcdFile) {
+        const vcdPath = path.join(tmpDir, vcdFile);
+        vcd = fs.readFileSync(vcdPath, 'utf-8');
+        log += `[VCD] Waveform data captured from ${vcdFile} (${vcd.length} bytes)\n`;
+      } else {
+        log += '[VCD] No .vcd file generated. Ensure your testbench contains $dumpfile("<name>.vcd") and $dumpvars.\n';
+      }
+    } catch (scanErr) {
+      log += `[VCD] Error scanning for VCD files: ${scanErr.message}\n`;
     }
 
     const elapsed = Date.now() - startTime;

@@ -70,11 +70,17 @@ export default function Toolbar({
           <Cpu className="w-4 h-4 text-keller-accent" />
         </div>
         <div>
-          <h1 className="text-sm font-bold tracking-tight text-keller-text leading-none">
+          <h1
+            className="text-sm font-bold tracking-tight text-keller-text leading-none"
+            style={{ fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif' }}
+          >
             KELLER
           </h1>
-          <p className="text-2xs text-keller-dim leading-none mt-0.5">
-            RTL Compiler v0.2
+          <p
+            className="text-2xs text-keller-dim leading-none mt-0.5"
+            style={{ fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif' }}
+          >
+            by Yashvardhan Singh
           </p>
         </div>
       </div>

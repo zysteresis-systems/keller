@@ -159,7 +159,7 @@ export default function KellerApp() {
     } finally {
       setIsSynthesizing(false);
     }
-  }, [addLog, clearLogs, recipe, flatten]);
+  }, [addLog, clearLogs, recipe, flatten, pdk]);
 
   // ── Run Simulation ──
   const handleSimulate = useCallback(async () => {
@@ -316,6 +316,16 @@ export default function KellerApp() {
           </div>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="flex items-center justify-between px-4 py-1 bg-keller-surface border-t border-keller-border">
+        <span className="text-2xs text-keller-dim font-sans" style={{ fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif' }}>
+          Keller v0.2 — Browser-Native RTL Compiler
+        </span>
+        <span className="text-2xs text-keller-dim font-sans" style={{ fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif' }}>
+          Built by <span className="text-keller-muted">Yashvardhan Singh</span>
+        </span>
+      </footer>
     </div>
   );
 }
