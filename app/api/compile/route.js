@@ -6,7 +6,7 @@
  * 1. "synthesis"  → Runs @yowasp/yosys (WASM) to synthesize Verilog
  *                    Returns: synthesis log, netlist JSON, schematic SVG
  *
- * 2. "simulate"   → Runs system iverilog + vvp to simulate with testbench
+ * 2. "simulate"   → Runs system Icarus Verilog or Verilator simulation
  *                    Returns: simulation log + VCD waveform data
  *
  * Both modes run server-side in the Node.js runtime (not in the browser).
@@ -320,8 +320,26 @@ async function renderSchematic(netlistJson) {
   return svg;
 }
 
-// ── Simulation via system iverilog + vvp ──
-async function runSimulation(designCode, testbenchCode) {
+function getCompilerBinary(compiler) {
+  return compiler === 'verilator' ? 'verilator' : 'iverilog';
+}
+
+async function isCompilerAvailable(compiler) {
+  try {
+    const { execSync } = await import('child_process');
+    if (compiler === 'verilator') {
+      execSync('verilator --version', { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] });
+    } else {
+      execSync('iverilog -V', { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ── Simulation via Icarus Verilog or Verilator ──
+async function runSimulation(designCode, testbenchCode, compiler = 'iverilog') {
   const startTime = Date.now();
   const { execSync } = await import('child_process');
   const fs = await import('fs');
@@ -338,37 +356,75 @@ async function runSimulation(designCode, testbenchCode) {
 
     let log = '';
 
-    // Step 1: Compile with iverilog
-    try {
-      const compileResult = execSync(
-        'iverilog -o sim.vvp design.v tb.v',
-        { cwd: tmpDir, encoding: 'utf-8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'] }
-      );
-      log += '[COMPILE] iverilog compilation successful\n';
-      if (compileResult) log += compileResult;
-    } catch (compileError) {
-      const stderr = compileError.stderr || compileError.message;
-      return {
-        success: false,
-        mode: 'simulate',
-        log: `[COMPILE ERROR] iverilog compilation failed:\n${stderr}`,
-        vcd: null,
-        elapsedMs: Date.now() - startTime,
-      };
-    }
+    const tbTopMatch = testbenchCode.match(/\bmodule\s+([a-zA-Z_][a-zA-Z0-9_$]*)/);
+    const testbenchTop = tbTopMatch?.[1] || 'tb';
 
-    // Step 2: Run simulation with vvp
-    try {
-      const simResult = execSync(
-        'vvp sim.vvp',
-        { cwd: tmpDir, encoding: 'utf-8', timeout: 60000, stdio: ['pipe', 'pipe', 'pipe'] }
-      );
-      log += '[SIMULATE] vvp simulation completed\n';
-      if (simResult) log += simResult;
-    } catch (simError) {
-      const stderr = simError.stderr || simError.message;
-      log += `[SIMULATE WARNING] vvp output:\n${stderr}\n`;
-      if (simError.stdout) log += simError.stdout;
+    if (compiler === 'verilator') {
+      // Verilator flow: SystemVerilog-enabled compile + binary execution
+      try {
+        const compileResult = execSync(
+          `verilator --binary --sv --trace --timing --top-module ${testbenchTop} tb.v design.v -o sim.out`,
+          { cwd: tmpDir, encoding: 'utf-8', timeout: 120000, stdio: ['pipe', 'pipe', 'pipe'] }
+        );
+        log += `[COMPILE] verilator --binary --sv compilation successful (top=${testbenchTop})\n`;
+        if (compileResult) log += compileResult;
+      } catch (compileError) {
+        const stderr = compileError.stderr || compileError.message;
+        return {
+          success: false,
+          mode: 'simulate',
+          compiler,
+          log: `[COMPILE ERROR] verilator compilation failed:\n${stderr}`,
+          vcd: null,
+          elapsedMs: Date.now() - startTime,
+        };
+      }
+
+      try {
+        const simResult = execSync(
+          path.join('obj_dir', 'sim.out'),
+          { cwd: tmpDir, encoding: 'utf-8', timeout: 60000, stdio: ['pipe', 'pipe', 'pipe'] }
+        );
+        log += '[SIMULATE] verilator simulation completed\n';
+        if (simResult) log += simResult;
+      } catch (simError) {
+        const stderr = simError.stderr || simError.message;
+        log += `[SIMULATE WARNING] verilator output:\n${stderr}\n`;
+        if (simError.stdout) log += simError.stdout;
+      }
+    } else {
+      // Icarus flow: SystemVerilog-enabled compile + vvp execution
+      try {
+        const compileResult = execSync(
+          'iverilog -g2012 -o sim.vvp design.v tb.v',
+          { cwd: tmpDir, encoding: 'utf-8', timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'] }
+        );
+        log += '[COMPILE] iverilog -g2012 compilation successful\n';
+        if (compileResult) log += compileResult;
+      } catch (compileError) {
+        const stderr = compileError.stderr || compileError.message;
+        return {
+          success: false,
+          mode: 'simulate',
+          compiler,
+          log: `[COMPILE ERROR] iverilog compilation failed:\n${stderr}`,
+          vcd: null,
+          elapsedMs: Date.now() - startTime,
+        };
+      }
+
+      try {
+        const simResult = execSync(
+          'vvp sim.vvp',
+          { cwd: tmpDir, encoding: 'utf-8', timeout: 60000, stdio: ['pipe', 'pipe', 'pipe'] }
+        );
+        log += '[SIMULATE] vvp simulation completed\n';
+        if (simResult) log += simResult;
+      } catch (simError) {
+        const stderr = simError.stderr || simError.message;
+        log += `[SIMULATE WARNING] vvp output:\n${stderr}\n`;
+        if (simError.stdout) log += simError.stdout;
+      }
     }
 
     // Step 3: Read VCD file — scan for ANY .vcd file (not just waveform.vcd)
@@ -393,6 +449,7 @@ async function runSimulation(designCode, testbenchCode) {
     return {
       success: true,
       mode: 'simulate',
+      compiler,
       log: log.trim(),
       vcd,
       elapsedMs: elapsed,
@@ -401,6 +458,7 @@ async function runSimulation(designCode, testbenchCode) {
     return {
       success: false,
       mode: 'simulate',
+      compiler,
       log: `Simulation failed: ${error.message}`,
       vcd: null,
       elapsedMs: Date.now() - startTime,
@@ -419,7 +477,8 @@ async function runSimulation(designCode, testbenchCode) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { design, testbench, mode, recipe, flatten, pdk } = body;
+    const { design, testbench, mode, recipe, flatten, pdk, compiler: requestedCompiler } = body;
+    const compiler = requestedCompiler === 'verilator' ? 'verilator' : 'iverilog';
 
     if (!design) {
       return NextResponse.json(
@@ -441,26 +500,32 @@ export async function POST(request) {
         );
       }
 
-      // Check if iverilog is available
-      try {
-        const { execSync } = await import('child_process');
-        execSync('iverilog -V', { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] });
-      } catch {
+      // Check if selected compiler is available
+      const available = await isCompilerAvailable(compiler);
+      if (!available) {
+        const missingBinary = getCompilerBinary(compiler);
+        const compilerLabel = compiler === 'verilator' ? 'Verilator' : 'Icarus Verilog';
         return NextResponse.json({
           success: false,
           mode: 'simulate',
+          compiler,
           log: [
-            '[ERROR] iverilog not found on system PATH.',
+            `[ERROR] ${missingBinary} not found on system PATH.`,
             '',
-            'Simulation requires Icarus Verilog to be installed locally.',
+            `Simulation with ${compilerLabel} requires the tool to be installed locally.`,
             'Synthesis (Yosys WASM) works without any installation.',
             '',
             '── Install Instructions ──',
             '',
-            'Option A: Download from https://bleyer.org/icarus/',
-            '  → Run the installer, add to PATH, restart terminal',
+            'Option A: Install Icarus Verilog',
+            '  → https://bleyer.org/icarus/',
+            '  → Add to PATH, restart terminal',
             '',
-            'Option B: OSS CAD Suite (includes yosys + iverilog + gtkwave)',
+            'Option B: Install Verilator',
+            '  → https://www.veripool.org/verilator/',
+            '  → Add to PATH, restart terminal',
+            '',
+            'Option C: OSS CAD Suite (includes yosys + iverilog + verilator + gtkwave)',
             '  → https://github.com/YosysHQ/oss-cad-suite-build/releases',
             '  → Extract, add bin/ to PATH',
             '',
@@ -471,7 +536,7 @@ export async function POST(request) {
         });
       }
 
-      const result = await runSimulation(design, testbench);
+      const result = await runSimulation(design, testbench, compiler);
       return NextResponse.json(result);
     }
 
@@ -491,6 +556,7 @@ export async function POST(request) {
 export async function GET() {
   let yosysAvailable = false;
   let iverilogAvailable = false;
+  let verilatorAvailable = false;
 
   try {
     await import('@yowasp/yosys');
@@ -503,11 +569,18 @@ export async function GET() {
     iverilogAvailable = true;
   } catch {}
 
+  try {
+    const { execSync } = await import('child_process');
+    execSync('verilator --version', { encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] });
+    verilatorAvailable = true;
+  } catch {}
+
   return NextResponse.json({
     status: 'ok',
     tools: {
       yosys: { available: yosysAvailable, type: 'wasm' },
       iverilog: { available: iverilogAvailable, type: 'system' },
+      verilator: { available: verilatorAvailable, type: 'system' },
     },
   });
 }

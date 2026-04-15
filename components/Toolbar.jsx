@@ -25,6 +25,11 @@ const PDK_OPTIONS = [
   { id: 'sky130_hd', label: 'SKY130 HD', desc: '130nm High Density' },
 ];
 
+const SIMULATOR_OPTIONS = [
+  { id: 'iverilog', label: 'Icarus', desc: 'iverilog + vvp (with -g2012)' },
+  { id: 'verilator', label: 'Verilator', desc: 'Fast C++ simulator (--sv enabled)' },
+];
+
 export default function Toolbar({
   onSynthesize,
   onSimulate,
@@ -35,6 +40,8 @@ export default function Toolbar({
   onCustomSequenceChange,
   pdk,
   onPdkChange,
+  simulator,
+  onSimulatorChange,
   flatten,
   onFlattenChange,
   isSynthesizing,
@@ -44,8 +51,10 @@ export default function Toolbar({
   const isLoading = isSynthesizing || isSimulating;
   const [showRecipeDropdown, setShowRecipeDropdown] = useState(false);
   const [showPdkDropdown, setShowPdkDropdown] = useState(false);
+  const [showSimulatorDropdown, setShowSimulatorDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const pdkDropdownRef = useRef(null);
+  const simulatorDropdownRef = useRef(null);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -56,6 +65,9 @@ export default function Toolbar({
       if (pdkDropdownRef.current && !pdkDropdownRef.current.contains(e.target)) {
         setShowPdkDropdown(false);
       }
+      if (simulatorDropdownRef.current && !simulatorDropdownRef.current.contains(e.target)) {
+        setShowSimulatorDropdown(false);
+      }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -63,6 +75,7 @@ export default function Toolbar({
 
   const currentRecipe = RECIPE_OPTIONS.find(r => r.id === recipe) || RECIPE_OPTIONS[1];
   const currentPdk = PDK_OPTIONS.find(p => p.id === pdk) || PDK_OPTIONS[0];
+  const currentSimulator = SIMULATOR_OPTIONS.find(s => s.id === simulator) || SIMULATOR_OPTIONS[0];
 
   return (
     <header className="flex items-center justify-between px-4 py-2 bg-keller-surface border-b border-keller-border">
@@ -176,6 +189,42 @@ export default function Toolbar({
                   onClick={() => { onPdkChange(opt.id); setShowPdkDropdown(false); }}
                   className={`w-full text-left px-3 py-1.5 text-xs transition-colors
                     ${opt.id === pdk
+                      ? 'text-keller-accent bg-keller-accent/10'
+                      : 'text-keller-muted hover:text-keller-text hover:bg-keller-hover'
+                    }`}
+                >
+                  <div className="font-medium">{opt.label}</div>
+                  <div className="text-2xs text-keller-dim mt-0.5">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Simulator dropdown */}
+        <div ref={simulatorDropdownRef} className="relative">
+          <button
+            onClick={() => setShowSimulatorDropdown(!showSimulatorDropdown)}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs
+                       text-keller-muted border border-keller-border
+                       hover:text-keller-text hover:border-keller-dim
+                       transition-colors disabled:opacity-40"
+          >
+            <span className="text-keller-dim">Sim:</span>
+            <span className="font-medium">{currentSimulator.label}</span>
+            <ChevronDown className="w-3 h-3" />
+          </button>
+
+          {showSimulatorDropdown && (
+            <div className="absolute top-full mt-1 left-0 z-50 w-64 py-1
+                            bg-keller-surface border border-keller-border rounded-md shadow-xl">
+              {SIMULATOR_OPTIONS.map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => { onSimulatorChange(opt.id); setShowSimulatorDropdown(false); }}
+                  className={`w-full text-left px-3 py-1.5 text-xs transition-colors
+                    ${opt.id === simulator
                       ? 'text-keller-accent bg-keller-accent/10'
                       : 'text-keller-muted hover:text-keller-text hover:bg-keller-hover'
                     }`}

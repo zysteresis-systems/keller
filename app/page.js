@@ -56,6 +56,7 @@ export default function KellerApp() {
   const [customSequence, setCustomSequence] = useState('5, 3, 0, 2, 2, 6, 0, 4, 3, 0, 6, 4, 3, 4, 2, 0, 4, 4, 3, 5');
   const [flatten, setFlatten] = useState(false);
   const [pdk, setPdk] = useState('generic');
+  const [simulator, setSimulator] = useState('iverilog');
   const [bottomTab, setBottomTab] = useState('waveform'); // 'waveform' | 'schematic'
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const codeRef = useRef({ design: DEFAULT_DESIGN, testbench: DEFAULT_TESTBENCH });
@@ -172,10 +173,10 @@ export default function KellerApp() {
     setVcdData(null);
 
     addLog('╔══════════════════════════════════════════════════╗', 'system');
-    addLog('║  KELLER — Icarus Verilog Simulation             ║', 'system');
+    addLog(`║  KELLER — ${simulator === 'verilator' ? 'Verilator' : 'Icarus Verilog'} Simulation             ║`, 'system');
     addLog('╚══════════════════════════════════════════════════╝', 'system');
     addLog('', 'default');
-    addLog('[INFO] Compiling design + testbench with iverilog...', 'info');
+    addLog(`[INFO] Compiling design + testbench with ${simulator}...`, 'info');
     addLog('', 'default');
 
     try {
@@ -186,6 +187,7 @@ export default function KellerApp() {
           design: codeRef.current.design,
           testbench: codeRef.current.testbench,
           mode: 'simulate',
+          compiler: simulator,
         }),
       });
 
@@ -234,7 +236,7 @@ export default function KellerApp() {
     } finally {
       setIsSimulating(false);
     }
-  }, [addLog, clearLogs]);
+  }, [addLog, clearLogs, simulator]);
 
   // ── Render ──
   return (
@@ -249,6 +251,8 @@ export default function KellerApp() {
         onCustomSequenceChange={setCustomSequence}
         pdk={pdk}
         onPdkChange={setPdk}
+        simulator={simulator}
+        onSimulatorChange={setSimulator}
         flatten={flatten}
         onFlattenChange={setFlatten}
         isSynthesizing={isSynthesizing}
@@ -326,7 +330,7 @@ export default function KellerApp() {
       {/* Footer */}
       <footer className="flex items-center justify-between px-4 py-1 bg-keller-surface border-t border-keller-border">
         <div className="flex items-center gap-3 text-2xs text-keller-dim font-sans" style={{ fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif' }}>
-          <span>Keller v0.3 — Browser-Native RTL Compiler</span>
+          <span>Keller v0.4 — Browser-Native RTL Compiler</span>
           <button 
             onClick={() => setIsChangelogOpen(true)}
             className="hover:text-keller-accent underline decoration-keller-accent/30 underline-offset-2 transition-colors"

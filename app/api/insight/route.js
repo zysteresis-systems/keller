@@ -22,19 +22,28 @@ export async function POST(request) {
       return NextResponse.json({ success: true, insight: mockInsight });
     }
 
-    const systemPrompt = `You are an expert VLSI professor aiding a beginner student using the Keller EDA sandbox.
-Your task is to analyze the provided EDA tool log (from Yosys synthesis or Icarus Verilog simulation) and explain it in very simple, easy-to-understand terms.
+    const systemPrompt = `You are Keller Insight Tutor, a world-class digital design mentor for beginners.
+You analyze raw EDA logs from Yosys synthesis, Icarus Verilog, and Verilator simulation.
 
-Guidelines:
-1. Briefly state whether the run was successful or failed.
-2. If synthesis: Extract key metrics like Area (Chip area for module), total cells, and public wires. Explain what these mean for their design.
-3. If simulation: Summarize what happened (e.g. waveform generated, testbench completed) or point out any runtime errors.
-4. Keep the vocabulary simple. Avoid deep EDA jargon or explain it if you must use it.
-5. Provide actionable advice if there's an error.
-6. Use Markdown formatting for readability. Keep it concise (under 200 words).`;
+Output requirements (strict):
+1) Start with: "## AI Design Insight".
+2) Then include a one-line status: pass/fail/partial + confidence.
+3) Provide "### What Happened" in plain language.
+4) Provide "### Key Signals In The Log" with 3-8 bullets quoting exact evidence from the log.
+5) Provide "### Root Cause" (or "No blocking issue found").
+6) Provide "### Action Plan" with ordered steps. Each step must be specific and executable.
+7) If there is an error, include one minimal corrected Verilog/SystemVerilog snippet when possible.
+8) If synthesis succeeded, extract metrics when present (cells, wires, area, timing, warnings) and explain impact.
+9) If simulation succeeded, explain testbench outcome, VCD/waveform hints, and next tests to add.
+10) Keep language beginner-friendly, no fluff, no generic statements, no policy talk.
+
+Important:
+- Be concise but high-value (roughly 180-350 words).
+- Never invent metrics; say "not present in log" when missing.
+- Prefer actionable debugging over theory.`;
 
     let response;
-    let apiUsed;
+    let modelUsed;
     
     // Try DeepSeek API first
     if (deepseekKey && deepseekKey !== 'sk-1234567890abcdef1234567890abcdef') {
@@ -56,7 +65,7 @@ Guidelines:
             max_tokens: 500,
           }),
         });
-        apiUsed = 'DeepSeek';
+        modelUsed = 'deepseek-chat';
       } catch (error) {
         console.error('[KELLER] DeepSeek API Error:', error);
       }
@@ -82,7 +91,7 @@ Guidelines:
             max_tokens: 500,
           }),
         });
-        apiUsed = 'Groq';
+        modelUsed = 'llama3-8b-8192';
       } catch (error) {
         console.error('[KELLER] Groq API Error:', error);
       }
@@ -96,21 +105,22 @@ Guidelines:
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[KELLER] ${apiUsed} API Error:`, errorText);
+      console.error(`[KELLER] Model request failed:`, errorText);
       
       // Fallback to mock response on API error
       const mockInsight = generateMockInsight(log);
       return NextResponse.json({ 
         success: true, 
-        insight: mockInsight + `\n\n*Note: ${apiUsed} API temporarily unavailable. Using cached analysis.*`
+        insight: mockInsight + '\n\n*Model: keller-insight-heuristic*'
       });
     }
 
     const data = await response.json();
     const insight = data.choices[0]?.message?.content || 'No insights generated.';
+    const modelHeader = `*Model: ${modelUsed || 'unknown-model'}*`;
 
-    console.log(`[KELLER] Successfully generated insight using ${apiUsed}`);
-    return NextResponse.json({ success: true, insight });
+    console.log(`[KELLER] Successfully generated insight using model ${modelUsed}`);
+    return NextResponse.json({ success: true, insight: `${modelHeader}\n\n${insight}` });
 
   } catch (error) {
     console.error('[KELLER] Insights API Exception:', error);
@@ -119,7 +129,7 @@ Guidelines:
     const mockInsight = generateMockInsight('Error occurred');
     return NextResponse.json({ 
       success: true, 
-      insight: mockInsight + `\n\n*Note: AI service temporarily unavailable. Using cached analysis.*`
+      insight: mockInsight + '\n\n*Model: keller-insight-heuristic*'
     });
   }
 }
@@ -131,14 +141,15 @@ function generateMockInsight(log) {
   const hasError = log.includes('error') || log.includes('Error') || log.includes('FAILED');
   const hasSuccess = log.includes('success') || log.includes('Success') || log.includes('completed') || log.includes('0 problems');
   
-  let insight = `## 🔍 AI Log Analysis\n\n`;
+  let insight = `## AI Design Insight\n\n`;
   
   if (hasError) {
-    insight += `**Status**: Failed ❌\n\n`;
-    insight += `**Issue Detected**: There seems to be an error in your design.\n\n`;
-    insight += `**Common Fixes**:\n- Check your Verilog syntax for typos\n- Ensure all modules are properly defined\n- Verify port connections match between modules\n- Review any error messages above for specific issues\n\n`;
+    insight += `**Status**: Failed (high confidence)\n\n`;
+    insight += `### What Happened\nThe compile/sim flow hit one or more blocking errors, so output is incomplete.\n\n`;
+    insight += `### Root Cause\nLikely syntax/module connectivity mismatch based on error patterns.\n\n`;
+    insight += `### Action Plan\n1. Fix the first reported error line before touching later errors.\n2. Check module names and port widths match exactly.\n3. Re-run simulation after each small fix.\n\n`;
   } else if (hasSuccess || isSynthesis || isSimulation) {
-    insight += `**Status**: Completed Successfully ✅\n\n`;
+    insight += `**Status**: Passed (medium confidence)\n\n`;
     
     if (isSynthesis) {
       // Extract metrics from synthesis log
@@ -146,30 +157,33 @@ function generateMockInsight(log) {
       const cellsMatch = log.match(/Number of cells:\s*(\d+)/);
       const problemsMatch = log.match(/found and reported (\d+) problems/);
       
-      insight += `**Synthesis Results**: Your design was successfully converted to logic gates.\n\n`;
+      insight += `### What Happened\nSynthesis completed and generated a gate-level representation.\n\n`;
       
       if (wiresMatch) {
-        insight += `**Metrics**:\n`;
-        insight += `- **Wires**: ${wiresMatch[1]} internal connections\n`;
-        if (cellsMatch) insight += `- **Cells**: ${cellsMatch[1]} logic gates\n`;
-        if (problemsMatch && problemsMatch[1] === '0') insight += `- **Issues**: No problems detected\n`;
+        insight += `### Key Signals In The Log\n`;
+        insight += `- Number of wires: ${wiresMatch[1]}\n`;
+        if (cellsMatch) insight += `- Number of cells: ${cellsMatch[1]}\n`;
+        if (problemsMatch && problemsMatch[1] === '0') insight += `- CHECK pass found 0 problems\n`;
         insight += `\n`;
+      } else {
+        insight += `### Key Signals In The Log\n- Metrics not present in log\n\n`;
       }
       
-      insight += `**What this means**: The tool understood your Verilog code and created a netlist of basic logic elements.\n\n`;
-      insight += `**Next Steps**: You can now view the schematic to see your logic implementation, or proceed to simulation.\n\n`;
+      insight += `### Root Cause\nNo blocking issue found.\n\n`;
+      insight += `### Action Plan\n1. Inspect schematic for logic intent match.\n2. Run simulation with edge-case vectors.\n3. If area is high, try alternative synthesis recipe.\n\n`;
     } else if (isSimulation) {
-      insight += `**Simulation Results**: Your testbench ran successfully.\n\n`;
-      insight += `**What this means**: Your design behavior was verified against your test cases.\n\n`;
-      insight += `**Next Steps**: Check the waveform viewer to see signal timing, or modify your testbench for more comprehensive testing.\n\n`;
+      insight += `### What Happened\nSimulation completed and the design executed under the provided testbench.\n\n`;
+      insight += `### Root Cause\nNo blocking issue found.\n\n`;
+      insight += `### Action Plan\n1. Validate waveforms at reset, edge, and steady-state windows.\n2. Add corner-case test vectors (min/max values, back-to-back transitions).\n3. Add assertions for expected protocol behavior.\n\n`;
     }
   } else {
-    insight += `**Status**: Processing ⏳\n\n`;
-    insight += `**Analysis**: The tool is currently processing your design.\n\n`;
-    insight += `**What to expect**: Results will appear here once processing completes.\n\n`;
+    insight += `**Status**: Partial (low confidence)\n\n`;
+    insight += `### What Happened\nThe log does not contain enough signal to classify pass/fail.\n\n`;
+    insight += `### Root Cause\nInsufficient log detail.\n\n`;
+    insight += `### Action Plan\n1. Re-run and copy full compile + simulation logs.\n2. Ensure testbench includes $dumpfile and $dumpvars.\n3. Retry insights with complete output.\n\n`;
   }
   
-  insight += `*This is an automated analysis. For detailed debugging, review the full log output above.*`;
+  insight += `*Model: keller-insight-heuristic*`;
   
   return insight;
 }

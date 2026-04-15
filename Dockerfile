@@ -1,7 +1,7 @@
 FROM node:20-bullseye-slim AS base
 
-# Install system dependencies: Icarus Verilog for simulation pipeline
-RUN apt-get update && apt-get install -y --no-install-recommends iverilog && rm -rf /var/lib/apt/lists/*
+# Install system dependencies: Icarus Verilog + Verilator for simulation pipeline
+RUN apt-get update && apt-get install -y --no-install-recommends iverilog verilator && rm -rf /var/lib/apt/lists/*
 
 # Step 1. Install dependencies and build
 FROM base AS builder

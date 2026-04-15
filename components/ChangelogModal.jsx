@@ -1,9 +1,22 @@
-import { X, History, ExternalLink } from 'lucide-react';
+import { X, History } from 'lucide-react';
 
 const RELEASES = [
   {
+    version: 'v0.4.0',
+    date: 'April 15, 2026 09:30 UTC',
+    title: 'Verilator Support, Simulator Selector, and Master-Class Insights',
+    changes: [
+      'Added dual simulation compiler support: Icarus Verilog and Verilator',
+      'Added simulator dropdown in toolbar to switch between Icarus and Verilator',
+      'Enabled SystemVerilog-oriented simulation mode for both flows (iverilog -g2012 and verilator --sv)',
+      'Added compiler-aware simulation logs and backend availability checks',
+      'Upgraded AI Insights prompt to produce deep root-cause analysis with actionable step-by-step fixes',
+      'Updated insights output to always include only the model name used for generation'
+    ]
+  },
+  {
     version: 'v0.3.2',
-    date: 'April 15, 2026',
+    date: 'April 15, 2026 08:10 UTC',
     title: 'AI Insights Bug Fix & Enhanced Error Handling',
     changes: [
       'Fixed "bad groq request" error in AI insights feature',
@@ -16,7 +29,7 @@ const RELEASES = [
   },
   {
     version: 'v0.3.1',
-    date: 'April 15, 2026',
+    date: 'April 15, 2026 07:45 UTC',
     title: 'Enhanced AI Insights & DeepSeek Integration',
     changes: [
       'Enhanced AI log analysis with DeepSeek API integration for better explanations',
@@ -27,7 +40,7 @@ const RELEASES = [
   },
   {
     version: 'v0.3',
-    date: 'April 2026',
+    date: 'April 2026 06:30 UTC',
     title: 'AI Insights & Custom ABC Sequences',
     changes: [
       'Added Groq Llama-3 integeration for one-click EDA log explanations (AI Insights)',
@@ -38,7 +51,7 @@ const RELEASES = [
   },
   {
     version: 'v0.2',
-    date: 'April 2026',
+    date: 'April 2026 04:20 UTC',
     title: 'Cloud Deployment & Sky130 Integration',
     changes: [
       'Integrated Sky130 HD PDK liberty file for realistic technology mapping',
@@ -49,7 +62,7 @@ const RELEASES = [
   },
   {
     version: 'v0.1',
-    date: 'April 2026',
+    date: 'April 2026 01:10 UTC',
     title: 'MVP Initialization',
     changes: [
       'Created browser-native EDA sandbox interface',
