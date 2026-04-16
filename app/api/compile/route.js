@@ -242,19 +242,26 @@ async function runSynthesis(designCode, options = {}) {
 }
 
 // ── Normalize netlist JSON for SVG rendering ──
-// Maps PDK-specific cell names to generic types that netlistsvg can render.
+// Maps PDK-specific cell names and port names to generic types that netlistsvg can render.
 function normalizeNetlistForSvg(netlistJson) {
   const CELL_MAP = {
     'inv': '$_NOT_', 'buf': '$_BUF_',
-    'nand2': '$_NAND_', 'nand3': '$_NAND_', 'nand4': '$_NAND_',
-    'nor2': '$_NOR_', 'nor3': '$_NOR_', 'nor4': '$_NOR_',
-    'and2': '$_AND_', 'and3': '$_AND_', 'and4': '$_AND_',
-    'or2': '$_OR_', 'or3': '$_OR_', 'or4': '$_OR_',
+    'nand2': '$_NAND_', 'nor2': '$_NOR_',
+    'and2': '$_AND_', 'or2': '$_OR_',
     'xor2': '$_XOR_', 'xnor2': '$_XNOR_',
     'mux2': '$_MUX_',
-    'dfxtp': '$_DFF_P_', 'dfrtp': '$_DFFSR_PPP_',
-    'a21oi': '$_AOI3_', 'o21ai': '$_OAI3_',
-    'a211oi': '$_AOI4_', 'o211ai': '$_OAI4_'
+    'dfxtp': '$_DFF_P_', 'dfrtp': '$_DFFSR_PPP_'
+    // Complex gates (OAI, AOI, etc.) omitted so netlistsvg falls back to drawing blackboxes 
+    // instead of invisible generic logic gates it doesn't have skin definitions for.
+  };
+
+  // Maps Sky130 pin names to Generic Yosys pin names
+  const PORT_MAP = {
+    'X': 'Y',    // Output of buf, and, or, xor
+    'CLK': 'C',  // Clock for DFF
+    'A1': 'A',   // For multi-inputs when forced to be generic
+    'A2': 'B',
+    'A0': 'A'    // MUX data ports mapping
   };
 
   try {
@@ -264,26 +271,47 @@ function normalizeNetlistForSvg(netlistJson) {
       const newCells = {};
       for (const [cellName, cellData] of Object.entries(mod.cells || {})) {
         let cellType = cellData.type || '';
-        // Try to match sky130/PDK cell name patterns
-        let matched = false;
+        let matchedGeneric = null;
+        
+        // 1. Identify if this is a Sky130 cell we want to normalize
         for (const [pattern, generic] of Object.entries(CELL_MAP)) {
           if (cellType.includes(`__${pattern}_`) || cellType.endsWith(`__${pattern}`)) {
-            cellData.type = generic;
-            matched = true;
+            matchedGeneric = generic;
             break;
           }
         }
-        // Add original type as an attribute for tooltip
-        if (matched) {
+
+        // 2. Map type and rename ports if matched
+        if (matchedGeneric) {
+          cellData.type = matchedGeneric;
           cellData.attributes = cellData.attributes || {};
-          cellData.attributes['original_type'] = cellType;
+          cellData.attributes['original_type'] = cellType; // Keep original for tooltip
+
+          // Rewrite port_directions
+          if (cellData.port_directions) {
+            const newPorts = {};
+            for (const [port, dir] of Object.entries(cellData.port_directions)) {
+              newPorts[PORT_MAP[port] || port] = dir;
+            }
+            cellData.port_directions = newPorts;
+          }
+
+          // Rewrite connections
+          if (cellData.connections) {
+            const newConns = {};
+            for (const [port, bits] of Object.entries(cellData.connections)) {
+              newConns[PORT_MAP[port] || port] = bits;
+            }
+            cellData.connections = newConns;
+          }
         }
         newCells[cellName] = cellData;
       }
       mod.cells = newCells;
     }
     return copy;
-  } catch {
+  } catch (e) {
+    console.error("[KELLER] Netlist normalization failed:", e);
     return netlistJson; // Return original on any error
   }
 }
@@ -500,43 +528,61 @@ export async function POST(request) {
         );
       }
 
-      // Check if selected compiler is available
-      const available = await isCompilerAvailable(compiler);
-      if (!available) {
-        const missingBinary = getCompilerBinary(compiler);
-        const compilerLabel = compiler === 'verilator' ? 'Verilator' : 'Icarus Verilog';
-        return NextResponse.json({
-          success: false,
-          mode: 'simulate',
-          compiler,
-          log: [
-            `[ERROR] ${missingBinary} not found on system PATH.`,
+      // Check selected compiler and gracefully fallback to the other one if available.
+      const selectedAvailable = await isCompilerAvailable(compiler);
+      let chosenCompiler = compiler;
+      let fallbackNotice = '';
+
+      if (!selectedAvailable) {
+        const fallbackCompiler = compiler === 'verilator' ? 'iverilog' : 'verilator';
+        const fallbackAvailable = await isCompilerAvailable(fallbackCompiler);
+
+        if (fallbackAvailable) {
+          chosenCompiler = fallbackCompiler;
+          fallbackNotice = [
+            `[WARN] Requested compiler "${compiler}" is not available on PATH.`,
+            `[INFO] Auto-fallback engaged. Running simulation with "${fallbackCompiler}" instead.`,
             '',
-            `Simulation with ${compilerLabel} requires the tool to be installed locally.`,
-            'Synthesis (Yosys WASM) works without any installation.',
-            '',
-            '── Install Instructions ──',
-            '',
-            'Option A: Install Icarus Verilog',
-            '  → https://bleyer.org/icarus/',
-            '  → Add to PATH, restart terminal',
-            '',
-            'Option B: Install Verilator',
-            '  → https://www.veripool.org/verilator/',
-            '  → Add to PATH, restart terminal',
-            '',
-            'Option C: OSS CAD Suite (includes yosys + iverilog + verilator + gtkwave)',
-            '  → https://github.com/YosysHQ/oss-cad-suite-build/releases',
-            '  → Extract, add bin/ to PATH',
-            '',
-            'After installing, restart the Keller dev server.',
-          ].join('\n'),
-          vcd: null,
-          elapsedMs: 0,
-        });
+          ].join('\n');
+        } else {
+          const missingBinary = getCompilerBinary(compiler);
+          const compilerLabel = compiler === 'verilator' ? 'Verilator' : 'Icarus Verilog';
+          return NextResponse.json({
+            success: false,
+            mode: 'simulate',
+            compiler,
+            log: [
+              `[ERROR] ${missingBinary} not found on system PATH.`,
+              '',
+              `Simulation with ${compilerLabel} requires the tool to be installed locally.`,
+              'Synthesis (Yosys WASM) works without any installation.',
+              '',
+              '── Install Instructions ──',
+              '',
+              'Option A: Install Icarus Verilog',
+              '  → https://bleyer.org/icarus/',
+              '  → Add to PATH, restart terminal',
+              '',
+              'Option B: Install Verilator',
+              '  → https://www.veripool.org/verilator/',
+              '  → Add to PATH, restart terminal',
+              '',
+              'Option C: OSS CAD Suite (includes yosys + iverilog + verilator + gtkwave)',
+              '  → https://github.com/YosysHQ/oss-cad-suite-build/releases',
+              '  → Extract, add bin/ to PATH',
+              '',
+              'After installing, restart the Keller dev server.',
+            ].join('\n'),
+            vcd: null,
+            elapsedMs: 0,
+          });
+        }
       }
 
-      const result = await runSimulation(design, testbench, compiler);
+      const result = await runSimulation(design, testbench, chosenCompiler);
+      if (fallbackNotice) {
+        result.log = `${fallbackNotice}${result.log || ''}`.trim();
+      }
       return NextResponse.json(result);
     }
 
