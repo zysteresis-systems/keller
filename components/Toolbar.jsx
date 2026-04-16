@@ -81,16 +81,10 @@ export default function Toolbar({
     <header className="flex items-center justify-between px-4 py-2 bg-keller-surface border-b border-keller-border">
       {/* Left: Branding */}
       <div className="flex items-center gap-2.5">
-        <div className="w-7 h-7 rounded border border-keller-accent/30 bg-keller-accent/10 flex items-center justify-center">
-          <Cpu className="w-4 h-4 text-keller-accent" />
-        </div>
-        <div>
-          <h1
-            className="text-sm font-bold tracking-tight text-keller-text leading-none"
-            style={{ fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif' }}
-          >
-            KELLER
-          </h1>
+        <a href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+          <img src="/Keller_logo.png" alt="Keller Logo" className="h-[28px] w-auto object-contain" />
+        </a>
+        <div className="border-l border-keller-border/50 pl-3 ml-1 h-[24px] flex flex-col justify-center">
           <p
             className="text-2xs text-keller-dim leading-none mt-0.5"
             style={{ fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif' }}
